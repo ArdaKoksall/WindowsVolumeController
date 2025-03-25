@@ -1,7 +1,7 @@
 # Java Windows Volume Control 🔊
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) <!-- Placeholder: Choose your actual license -->
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)](#prerequisites)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)]
 
 A simple Java library to control the master system volume on **Windows** operating systems. It leverages the powerful command-line utility [NirCmd](https://www.nirsoft.net/utils/nircmd.html) by NirSoft.
 
@@ -29,13 +29,12 @@ A simple Java library to control the master system volume on **Windows** operati
  
 **Add Dependency:** Include this library in your project.
 
-    *(Replace with actual coordinates if published)*
     **Maven:**
     ```xml
     <dependency>
-        <groupId>com.github.ArdaKoksall</groupId> <!-- Replace if different -->
-        <artifactId>windows-volume-control</artifactId> <!-- Replace if different -->
-        <version>1.0.0</version> <!-- Replace with actual version -->
+        <groupId>com.github.ArdaKoksall</groupId>
+        <artifactId>wvc</artifactId>
+        <version>1.0.0</version>
     </dependency>
     ```
 

@@ -11,7 +11,7 @@
 
     <name>${project.artifactId}</name>
     <description>A Java library to control Windows system volume using the bundled NirCmd utility.</description>
-    <url>https://github.com/ArdaKoksall/WindowsVolumeControl</url>
+    <url>https://github.com/ArdaKoksall/WindowsVolumeController</url>
 
     <licenses>
         <license>
@@ -29,9 +29,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/ArdaKoksall/WindowsVolumeControl.git</connection>
-        <developerConnection>scm:git:ssh://github.com:ArdaKoksall/WindowsVolumeControl.git</developerConnection>
-        <url>https://github.com/ArdaKoksall/WindowsVolumeControl/tree/main</url>
+        <connection>scm:git:git://github.com/ArdaKoksall/WindowsVolumeController.git</connection>
+        <developerConnection>scm:git:ssh://github.com:ArdaKoksall/WindowsVolumeController.git</developerConnection>
+        <url>https://github.com/ArdaKoksall/WindowsVolumeController/tree/main</url>
     </scm>
 
     <properties>
@@ -51,12 +51,12 @@
         <repository>
             <id>github</id>
             <name>GitHub ArdaKoksall Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/ArdaKoksall/WindowsVolumeControl</url>
+            <url>https://maven.pkg.github.com/ArdaKoksall/WindowsVolumeController</url>
         </repository>
         <snapshotRepository>
             <id>github</id>
             <name>GitHub ${project.groupId} Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/ArdaKoksall/WindowsVolumeControl</url>
+            <url>https://maven.pkg.github.com/ArdaKoksall/WindowsVolumeController</url>
         </snapshotRepository>
     </distributionManagement>
 
