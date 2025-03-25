@@ -62,7 +62,7 @@ public class WindowsVolumeControl {
      * Enables informational logging for volume control operations.
      * Critical errors and warnings are always logged.
      */
-    public static void enableLogging() {
+    public void enableLogging() {
         isLoggingEnabled = true;
         LOGGER.log(Level.INFO, "WindowsVolumeControl logging enabled.");
     }
@@ -71,7 +71,7 @@ public class WindowsVolumeControl {
      * Disables informational logging for volume control operations.
      * Critical errors and warnings are always logged.
      */
-    public static void disableLogging() {
+    public void disableLogging() {
         if (isLoggingEnabled) {
             LOGGER.log(Level.INFO, "WindowsVolumeControl logging disabled.");
         }
