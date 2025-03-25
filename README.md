@@ -30,7 +30,7 @@ A simple Java library to control the master system volume on **Windows** operati
 **Add Dependency:** Include this library in your project.
 
     **Maven:**
-    ```xml
+    ```
     <dependency>
         <groupId>com.github.ArdaKoksall</groupId>
         <artifactId>wvc</artifactId>
