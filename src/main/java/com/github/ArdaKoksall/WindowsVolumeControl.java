@@ -285,7 +285,6 @@ public class WindowsVolumeControl {
         }
     }
 
-
     /**
      * Checks if the NirCmd executable path was successfully determined during initialization.
      * @throws IllegalStateException if NirCmd path is null (initialization failed).
