@@ -43,6 +43,49 @@ A simple Java library to control the master system volume on **Windows** operati
 ## 🚀 Usage
 
 ```java
+# Java Windows Volume Control 🔊
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
+[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)]
+
+A simple Java library to control the master system volume on **Windows** operating systems. It leverages the powerful command-line utility [NirCmd](https://www.nirsoft.net/utils/nircmd.html) by NirSoft.
+
+---
+
+## ✨ Features
+
+*   **Set Volume:** Set the system volume to a specific percentage (0-100).
+*   **Adjust Volume:** Increase or decrease the volume by a percentage step.
+*   **Mute Control:** Mute, unmute, or toggle the system mute state.
+*  **Logging:** Built-in logging for debugging and monitoring.
+*   **Self-Contained (with NirCmd):** Bundles `nircmd.exe` within your application JAR and automatically extracts it to a temporary location for use.
+*   **Automatic Cleanup:** The extracted `nircmd.exe` is automatically deleted when the Java Virtual Machine exits.
+
+---
+
+## ⚠️ Prerequisites
+
+*   **Operating System:** Microsoft Windows (NirCmd is a Windows utility).
+*   **Java Runtime Environment (JRE):** Version 8 or higher recommended.
+
+
+---
+
+## ⚙️ Installation / Setup
+ 
+**Add Dependency:** Include this library in your project.
+
+    <dependency>
+        <groupId>com.github.ArdaKoksall</groupId>
+        <artifactId>wvc</artifactId>
+        <version>1.0.0</version>
+    </dependency>
+
+---
+
+## 🚀 Usage
+
+```java
 import com.github.ArdaKoksall.WindowsVolumeControl;
 import java.io.IOException;
 import java.util.logging.Level;
@@ -72,7 +115,16 @@ public class VolumeDemo {
             System.out.println("WindowsVolumeControl initialized.");
 
             // --- Example Operations ---
-
+            
+            // Disable logging for this class
+            volumeControl.disableLogging();
+            
+            // Enable logging for this class
+            volumeControl.enableLogging();
+            
+            // Get current volume
+            int currentVolume = volumeControl.getVolume();
+            
             // Set volume to 50%
             System.out.println("Setting volume to 50%");
             volumeControl.setVolume(50);
