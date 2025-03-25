@@ -27,9 +27,9 @@ A simple Java library to control the master system volume on **Windows** operati
 
 ## ⚙️ Installation / Setup
  
-**Add Dependency:** Include this library in your project.
+**Add Dependency:** Include this library in your pom.
 
-    **Maven:**
+
     ```
     <dependency>
         <groupId>com.github.ArdaKoksall</groupId>
