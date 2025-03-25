@@ -12,6 +12,7 @@ A simple Java library to control the master system volume on **Windows** operati
 *   **Set Volume:** Set the system volume to a specific percentage (0-100).
 *   **Adjust Volume:** Increase or decrease the volume by a percentage step.
 *   **Mute Control:** Mute, unmute, or toggle the system mute state.
+*  **Logging:** Built-in logging for debugging and monitoring.
 *   **Self-Contained (with NirCmd):** Bundles `nircmd.exe` within your application JAR and automatically extracts it to a temporary location for use.
 *   **Automatic Cleanup:** The extracted `nircmd.exe` is automatically deleted when the Java Virtual Machine exits.
 
@@ -69,7 +70,16 @@ public class VolumeDemo {
             System.out.println("WindowsVolumeControl initialized.");
 
             // --- Example Operations ---
-
+            
+            // Disable logging for this class
+            volumeControl.disableLogging();
+            
+            // Enable logging for this class
+            volumeControl.enableLogging();
+            
+            // Get current volume
+            int currentVolume = volumeControl.getVolume();
+            
             // Set volume to 50%
             System.out.println("Setting volume to 50%");
             volumeControl.setVolume(50);

@@ -20,9 +20,6 @@ import java.util.logging.Logger;
  * location upon initialization and uses it to execute volume commands.</p>
  *
  * <p><b>Prerequisites:</b> Must be run on a Windows operating system.</p>
- * <p><b>Bundled Dependency:</b> Requires nircmd.exe (from NirSoft) to be present
- * in the classpath resources (typically src/main/resources/nircmd.exe in a Maven/Gradle project).</p>
- * <p><b>License Note:</b> Ensure compliance with the NirCmd license agreement when distributing this library.</p>
  */
 public class WindowsVolumeControl {
 
@@ -241,6 +238,55 @@ public class WindowsVolumeControl {
     }
 
     /**
+     * Gets the current system volume percentage (0-100).
+     * Uses the `getsysvolume` NirCmd command. Parses the first number returned if multiple are present (e.g., L/R channels).
+     * If an error occurs during execution or parsing, it is logged as SEVERE and -1 is returned.
+     *
+     * @return The current volume percentage (0-100), or -1 if the volume could not be retrieved or parsed.
+     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     */
+    public int getVolume() {
+        try {
+            checkNirCmdReady();
+            String rawOutput = executeNirCmdAndCaptureOutput("getsysvolume");
+
+            if (rawOutput == null || rawOutput.trim().isEmpty()) {
+                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned empty or null output.");
+                return -1;
+            }
+
+            // NirCmd might return multiple values (e.g., "L R"). Use the first one.
+            String[] parts = rawOutput.trim().split("\\s+");
+            if (parts.length == 0) {
+                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned unexpected format (no numbers): {0}", rawOutput);
+                return -1;
+            }
+
+            int nircmdVolume = Integer.parseInt(parts[0]);
+            if (nircmdVolume < 0 || nircmdVolume > NIRCMD_MAX_VOLUME) {
+                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned value outside expected range [0, {0}]: {1}", new Object[]{NIRCMD_MAX_VOLUME, nircmdVolume});
+                // Clamp the value just in case
+                nircmdVolume = Math.max(0, Math.min(NIRCMD_MAX_VOLUME, nircmdVolume));
+            }
+
+            int percentage = (int) Math.round((nircmdVolume / (double) NIRCMD_MAX_VOLUME) * 100.0);
+
+            if (isLoggingEnabled) {
+                LOGGER.log(Level.INFO, "Current system volume retrieved: {0}% (NirCmd value: {1})", new Object[]{percentage, nircmdVolume});
+            }
+            return percentage;
+
+        } catch (IOException | InterruptedException | IllegalStateException e) {
+            LOGGER.log(Level.SEVERE, "Failed to get current volume", e);
+            return -1;
+        } catch (NumberFormatException e) {
+            LOGGER.log(Level.SEVERE, "Failed to parse volume output from NirCmd", e);
+            return -1;
+        }
+    }
+
+
+    /**
      * Checks if the NirCmd executable path was successfully determined during initialization.
      * @throws IllegalStateException if NirCmd path is null (initialization failed).
      */
@@ -251,17 +297,17 @@ public class WindowsVolumeControl {
     }
 
     /**
-     * Executes a NirCmd command using the extracted executable.
+     * Executes a NirCmd command without capturing its standard output (primarily for actions).
+     * Standard error is consumed and logged.
      *
      * @param command The NirCmd command (e.g., "setsysvolume").
      * @param args    Variable arguments for the NirCmd command.
      * @throws IOException If an I/O error occurs during process execution or if NirCmd path isn't initialized.
      * @throws InterruptedException If the current thread is interrupted while waiting.
+     * @throws IllegalStateException if NirCmd could not be initialized (during class loading or check).
      */
-    private void executeNirCmd(String command, String... args) throws IOException, InterruptedException {
-        if (extractedNirCmdPath == null) {
-            throw new IOException("Internal Error: NirCmd path not initialized when executing command.");
-        }
+    private void executeNirCmd(String command, String... args) throws IOException, InterruptedException, IllegalStateException {
+        checkNirCmdReady(); // Ensures path is ready, throws IllegalStateException if not
 
         List<String> commandList = new ArrayList<>();
         commandList.add(extractedNirCmdPath);
@@ -278,16 +324,20 @@ public class WindowsVolumeControl {
         try {
             process = processBuilder.start();
 
+            // Consume stdout and stderr to prevent blocking, only log if enabled
             StreamGobbler outputGobbler = new StreamGobbler(process.getInputStream(), "OUTPUT", isLoggingEnabled);
-            StreamGobbler errorGobbler = new StreamGobbler(process.getErrorStream(), "ERROR", isLoggingEnabled);
+            StreamGobbler errorGobbler = new StreamGobbler(process.getErrorStream(), "ERROR", isLoggingEnabled); // Always log stderr content as warning? No, keep it FINEST for now.
             new Thread(outputGobbler).start();
             new Thread(errorGobbler).start();
 
             int exitCode = process.waitFor();
 
             if (exitCode != 0) {
+                // Log non-zero exit code as WARNING regardless of logging flag
                 LOGGER.log(Level.WARNING, "NirCmd command finished with non-zero exit code: {0}. Command: {1}",
                         new Object[]{exitCode, String.join(" ", commandList)});
+                // Optionally throw an exception here if non-zero exit is always an error for action commands
+                // throw new IOException("NirCmd command failed with exit code " + exitCode);
             } else {
                 if (isLoggingEnabled) {
                     LOGGER.log(Level.FINE, "NirCmd command finished successfully (exit code 0).");
@@ -308,6 +358,79 @@ public class WindowsVolumeControl {
     }
 
     /**
+     * Executes a NirCmd command and captures the first line of its standard output.
+     * Standard error is consumed and logged.
+     *
+     * @param command The NirCmd command (e.g., "getsysvolume").
+     * @param args    Variable arguments for the NirCmd command.
+     * @return The first line of the standard output from the command, or null if no output was produced.
+     * @throws IOException If an I/O error occurs, the command returns a non-zero exit code, or if NirCmd path isn't initialized.
+     * @throws InterruptedException If the current thread is interrupted while waiting.
+     * @throws IllegalStateException if NirCmd could not be initialized (during class loading or check).
+     */
+    private String executeNirCmdAndCaptureOutput(String command, String... args) throws IOException, InterruptedException, IllegalStateException {
+        checkNirCmdReady(); // Ensures path is ready, throws IllegalStateException if not
+
+        List<String> commandList = new ArrayList<>();
+        commandList.add(extractedNirCmdPath);
+        commandList.add(command);
+        commandList.addAll(Arrays.asList(args));
+
+        ProcessBuilder processBuilder = new ProcessBuilder(commandList);
+
+        if (isLoggingEnabled) {
+            LOGGER.log(Level.FINE, "Executing for output capture: {0}", String.join(" ", commandList));
+        }
+
+        Process process = null;
+        String outputLine = null;
+
+        try {
+            process = processBuilder.start();
+
+            // Consume stderr in a separate thread to prevent blocking and log errors/output
+            StreamGobbler errorGobbler = new StreamGobbler(process.getErrorStream(), "ERROR", isLoggingEnabled);
+            new Thread(errorGobbler).start();
+
+            // Read stdout directly after process completion
+            try (InputStream stdout = process.getInputStream();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(stdout))) {
+
+                int exitCode = process.waitFor();
+
+                if (exitCode != 0) {
+                    LOGGER.log(Level.WARNING, "NirCmd command finished with non-zero exit code: {0}. Command: {1}",
+                            new Object[]{exitCode, String.join(" ", commandList)});
+                    // Treat non-zero exit as an error when expecting output
+                    throw new IOException("NirCmd command failed with exit code " + exitCode + " for command: " + String.join(" ", commandList));
+                } else {
+                    if (isLoggingEnabled) {
+                        LOGGER.log(Level.FINE, "NirCmd command finished successfully (exit code 0).");
+                    }
+                    // Read the first line of output
+                    outputLine = reader.readLine();
+                    // Optionally read and log remaining lines at FINEST if needed for debugging
+                    // String line; while ((line = reader.readLine()) != null && isLoggingEnabled) { LOGGER.log(Level.FINEST, "OUTPUT> (extra) {0}", line); }
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "Error executing or reading output from NirCmd command: " + String.join(" ", commandList), e);
+            throw e; // Rethrow IOExceptions
+        } catch (InterruptedException e) {
+            LOGGER.log(Level.WARNING, "NirCmd execution interrupted: " + String.join(" ", commandList), e);
+            Thread.currentThread().interrupt();
+            throw e; // Rethrow InterruptedExceptions
+        } finally {
+            if (process != null) {
+                // Ensure all streams are closed by the try-with-resources or gobblers finishing
+                process.destroy(); // Forcefully terminate if still running
+            }
+        }
+        return outputLine;
+    }
+
+
+    /**
      * Helper record to consume and optionally log input/error streams from a Process.
      *
      * @param inputStream The stream to read from (stdout or stderr).
@@ -317,15 +440,22 @@ public class WindowsVolumeControl {
     private record StreamGobbler(InputStream inputStream, String type, boolean loggingEnabled) implements Runnable {
         @Override
         public void run() {
+            // Use try-with-resources for the reader
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    // Only log stream output if logging is enabled
                     if (loggingEnabled) {
+                        // Log process output/error streams at a very fine level
                         LOGGER.log(Level.FINEST, "{0}> {1}", new Object[]{type.toUpperCase(), line});
                     }
                 }
             } catch (IOException e) {
-                LOGGER.log(Level.WARNING, "Error reading process " + type.toUpperCase() + " stream", e);
+                // Log stream reading errors as WARNING regardless of logging flag,
+                // but only if the process wasn't explicitly destroyed (which can cause IOExceptions here)
+                if (!Thread.currentThread().isInterrupted()) { // Basic check, might not be fully reliable depending on destroy timing
+                    LOGGER.log(Level.WARNING, "Error reading process " + type.toUpperCase() + " stream", e);
+                }
             }
         }
     }
