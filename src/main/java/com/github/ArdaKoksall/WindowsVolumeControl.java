@@ -31,7 +31,7 @@ public class WindowsVolumeControl {
 
     private static final String extractedToolPath;
 
-    private static boolean isLoggingEnabled = true;
+    private static boolean isLoggingEnabled = false;
 
     /**
      * Represents the target audio devices for volume control.
@@ -63,7 +63,10 @@ public class WindowsVolumeControl {
     static {
         try {
             extractedToolPath = extractTool();
-            LOGGER.log(Level.INFO, "{0} extracted successfully to: {1}", new Object[]{TOOL_NAME.toUpperCase(), extractedToolPath});
+            if (isLoggingEnabled) {
+                LOGGER.log(Level.INFO, "{0} extracted successfully to: {1}", new Object[]{TOOL_NAME.toUpperCase(), extractedToolPath});
+            }
+
 
             Path tempPath = Path.of(extractedToolPath);
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {

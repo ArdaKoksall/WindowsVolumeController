@@ -16,7 +16,8 @@ A Java library to control the system volume on **Windows** operating systems. It
 *   **Get Volume:** Retrieve the current volume percentage.
 *   **Check Mute Status:** Check if the device is currently muted.
 *   **Device Selection:** Target specific audio devices (`DefaultRenderDevice`, `Speakers`, `Headphones`).
-*   **Logging:** Built-in optional logging using `java.util.logging`.
+*   **Logging:** Enable or disable logging for debugging purposes(default off).
+* 
 *   **Self-Contained (with svcl.exe):** Bundles `svcl.exe` within your application JAR and automatically extracts it to a temporary location for use.
 *   **Automatic Cleanup:** The extracted `svcl.exe` is automatically deleted when the Java Virtual Machine exits.
 
