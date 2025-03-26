@@ -1,53 +1,56 @@
 # Java Windows Volume Control 🔊
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)]
 
-A simple Java library to control the master system volume on **Windows** operating systems. It leverages the powerful command-line utility [NirCmd](https://www.nirsoft.net/utils/nircmd.html) by NirSoft.
+
+A Java library to control the system volume on **Windows** operating systems. It leverages the command-line utility [SoundVolumeView Command-Line (svcl.exe)](https://www.nirsoft.net/utils/sound_volume_view.html#command_line) by NirSoft.
 
 ---
 
 ## ✨ Features
 
-*   **Set Volume:** Set the system volume to a specific percentage (0-100).
+*   **Set Volume:** Set the volume to a specific percentage (0-100).
 *   **Adjust Volume:** Increase or decrease the volume by a percentage step.
-*   **Mute Control:** Mute, unmute, or toggle the system mute state.
-*  **Get Volume:** Retrieve the current system volume.
-*  **Logging:** Built-in logging for debugging and monitoring.
-*   **Self-Contained (with NirCmd):** Bundles `nircmd.exe` within your application JAR and automatically extracts it to a temporary location for use.
-*   **Automatic Cleanup:** The extracted `nircmd.exe` is automatically deleted when the Java Virtual Machine exits.
+*   **Mute Control:** Mute, unmute, or toggle the mute state.
+*   **Get Volume:** Retrieve the current volume percentage.
+*   **Check Mute Status:** Check if the device is currently muted.
+*   **Device Selection:** Target specific audio devices (`DefaultRenderDevice`, `Speakers`, `Headphones`).
+*   **Logging:** Built-in optional logging using `java.util.logging`.
+*   **Self-Contained (with svcl.exe):** Bundles `svcl.exe` within your application JAR and automatically extracts it to a temporary location for use.
+*   **Automatic Cleanup:** The extracted `svcl.exe` is automatically deleted when the Java Virtual Machine exits.
 
 ---
 
 ## ⚠️ Prerequisites
 
-*   **Operating System:** Microsoft Windows (NirCmd is a Windows utility).
-*   **Java Runtime Environment (JRE):** Version 8 or higher recommended.
-
+*   **Operating System:** Microsoft Windows (`svcl.exe` is a Windows utility).
+*   **Java Runtime Environment (JRE):** Version 17 or higher recommended (due to usage of `record`).
 
 ---
 
 ## ⚙️ Installation / Setup
- 
-**Add Dependency:** Include this library in your project.
 
-    <dependency>
-        <groupId>com.github.ArdaKoksall</groupId>
-        <artifactId>wvc</artifactId>
-        <version>3.0.0</version>
-    </dependency>
+**Add Dependency:** Include this library in your project (replace with your actual Maven/Gradle coordinates if different).
 
----
+*Maven:*
+```xml
+<dependency>
+    <groupId>com.github.ArdaKoksall</groupId> 
+    <artifactId>wvc</artifactId>             
+    <version>1.0.0</version>                 
+</dependency>
+```
 
 ## 🚀 Usage
 
 ```java
-import com.github.ArdaKoksall.WindowsVolumeControl;
-import java.io.IOException;
+package com.github.ArdaKoksall;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class VolumeDemo {
+public class Example{
 
     // Optional: Configure logging to see debug/info messages
     static {
@@ -66,25 +69,45 @@ public class VolumeDemo {
 
     public static void main(String[] args) {
         try {
-            // Initialization happens automatically here, extracting NirCmd
+            // Initialization happens automatically here, extracting svcl
             WindowsVolumeControl volumeControl = new WindowsVolumeControl();
             System.out.println("WindowsVolumeControl initialized.");
 
+
             // --- Example Operations ---
-            
+
+            // Optional: Set target device defaults to WindowsVolumeControl.AudioDevice.DEFAULT_RENDER_DEVICE
+            //volumeControl.setTargetDevice(WindowsVolumeControl.AudioDevice.SPEAKERS); // Optional: Set target device
+
+            // Get the target device
+            System.out.println("Target device: " + volumeControl.getTargetDevice());
+
             // Disable logging for this class
             volumeControl.disableLogging();
-            
+            System.out.println("Logging disabled.");
+
             // Enable logging for this class
             volumeControl.enableLogging();
-            
+            System.out.println("Logging enabled.");
+
             // Get current volume
-            int currentVolume = volumeControl.getVolume();
-            
+            double currentVolume = volumeControl.getVolume();
+            System.out.println("Current volume: " + currentVolume + "%");
+
+            // Set volume to 100%
+            System.out.println("Setting volume to 100%");
+            volumeControl.volumeMax();
+            Thread.sleep(2000);
+
+            // Set volume to 0%
+            System.out.println("Setting volume to 0%");
+            volumeControl.volumeMin();
+            Thread.sleep(2000);
+
             // Set volume to 50%
             System.out.println("Setting volume to 50%");
             volumeControl.setVolume(50);
-            Thread.sleep(2000); // Pause to observe
+            Thread.sleep(2000);
 
             // Increase volume by 10%
             System.out.println("Increasing volume by 10%");
@@ -100,6 +123,11 @@ public class VolumeDemo {
             System.out.println("Muting volume");
             volumeControl.mute();
             Thread.sleep(2000);
+
+            // Get the mute status
+            boolean isMuted = volumeControl.isMuted();
+            System.out.println("Is muted: " + isMuted);
+            Thread.sleep(1000);
 
             // Unmute the volume
             System.out.println("Unmuting volume");
@@ -118,16 +146,12 @@ public class VolumeDemo {
 
             System.out.println("Volume control demonstration finished.");
 
-        } catch (IOException e) {
-            System.err.println("Error executing volume command: " + e.getMessage());
-            e.printStackTrace();
         } catch (InterruptedException e) {
             System.err.println("Operation interrupted: " + e.getMessage());
-            Thread.currentThread().interrupt(); // Restore interrupt status
+            Thread.currentThread().interrupt();
         } catch (IllegalStateException e) {
             System.err.println("Initialization Error: " + e.getMessage());
-            System.err.println("Ensure nircmd.exe is in src/main/resources and you are on Windows.");
-            e.printStackTrace();
+            System.err.println("Ensure svcl.exe exists in the JAR.");
         } catch (IllegalArgumentException e) {
             System.err.println("Invalid argument: " + e.getMessage());
         }

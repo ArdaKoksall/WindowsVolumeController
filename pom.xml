@@ -6,17 +6,18 @@
 
     <groupId>com.github.ArdaKoksall</groupId>
     <artifactId>wvc</artifactId>
-    <version>3.0.0</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>${project.artifactId}</name>
-    <description>A Java library to control Windows system volume using the bundled NirCmd utility.</description>
+    <description>A Java library to control Windows system volume using the bundled svcl utility.</description>
     <url>https://github.com/ArdaKoksall/WindowsVolumeController</url>
 
     <licenses>
         <license>
-            <name>The Apache License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
 

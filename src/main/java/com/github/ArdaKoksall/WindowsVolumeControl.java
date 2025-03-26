@@ -14,43 +14,74 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Controls Windows system volume using the bundled NirCmd utility.
+ * Controls Windows system volume using the bundled svcl.exe (SoundVolumeView Command-Line).
  *
- * <p>This class extracts nircmd.exe from the JAR resources to a temporary
- * location upon initialization and uses it to execute volume commands.</p>
+ * <p>This class extracts svcl.exe from the JAR resources to a temporary
+ * location upon initialization and uses it to execute volume commands for a selected audio device.</p>
+ *
+ * <p>The target device can be changed using {@link #setTargetDevice(AudioDevice)}.</p>
  *
  * <p><b>Prerequisites:</b> Must be run on a Windows operating system.</p>
  */
 public class WindowsVolumeControl {
 
     private static final Logger LOGGER = Logger.getLogger(WindowsVolumeControl.class.getName());
-    private static final String NIRCMD_RESOURCE_NAME = "/nircmd.exe";
-    private static final int NIRCMD_MAX_VOLUME = 65535;
-    private static final String extractedNirCmdPath;
+    private static final String TOOL_RESOURCE_NAME = "/svcl.exe";
+    private static final String TOOL_NAME = "svcl";
+
+    private static final String extractedToolPath;
+
     private static boolean isLoggingEnabled = true;
+
+    /**
+     * Represents the target audio devices for volume control.
+     * Note: "Speakers" and "Headphones" assume devices with these exact names exist.
+     * svcl.exe might require exact device names as shown in SoundVolumeView. Use "/GetPercent" without /Stdout manually to check device names.
+     */
+    public enum AudioDevice {
+        DEFAULT_RENDER_DEVICE("DefaultRenderDevice"),
+        SPEAKERS("Speakers"),
+        HEADPHONES("Headphones");
+
+        private final String deviceString;
+
+        AudioDevice(String deviceString) {
+            this.deviceString = deviceString;
+        }
+
+        /**
+         * Gets the string representation of the device used in svcl.exe commands.
+         * @return The device string.
+         */
+        public String getDeviceString() {
+            return deviceString;
+        }
+    }
+
+    private AudioDevice currentTargetDevice = AudioDevice.DEFAULT_RENDER_DEVICE;
 
     static {
         try {
-            extractedNirCmdPath = extractNirCmd();
-            LOGGER.log(Level.INFO, "NirCmd extracted successfully to: {0}", extractedNirCmdPath);
+            extractedToolPath = extractTool();
+            LOGGER.log(Level.INFO, "{0} extracted successfully to: {1}", new Object[]{TOOL_NAME.toUpperCase(), extractedToolPath});
 
-            Path tempPath = Path.of(extractedNirCmdPath);
+            Path tempPath = Path.of(extractedToolPath);
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     Files.deleteIfExists(tempPath);
                     if (isLoggingEnabled) {
-                        LOGGER.log(Level.INFO, "Temporary NirCmd file deleted: {0}", tempPath);
+                        LOGGER.log(Level.INFO, "Temporary {0} file deleted: {1}", new Object[]{TOOL_NAME.toUpperCase(), tempPath});
                     }
                 } catch (IOException e) {
-                    LOGGER.log(Level.SEVERE, "Failed to delete temporary NirCmd file: " + tempPath, e);
+                    LOGGER.log(Level.SEVERE, "Failed to delete temporary " + TOOL_NAME.toUpperCase() + " file: " + tempPath, e);
                 }
             }));
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "FATAL: Failed to extract nircmd.exe from resources. Volume control will not work.", e);
-            throw new IllegalStateException("Could not initialize WindowsVolumeControl: Failed to extract nircmd.exe", e);
+            LOGGER.log(Level.SEVERE, "FATAL: Failed to extract " + TOOL_RESOURCE_NAME + " from resources. Volume control will not work.", e);
+            throw new IllegalStateException("Could not initialize WindowsVolumeControl: Failed to extract " + TOOL_NAME + ".exe", e);
         } catch (SecurityException e) {
-            LOGGER.log(Level.SEVERE, "FATAL: Security restrictions prevent extracting or executing NirCmd.", e);
+            LOGGER.log(Level.SEVERE, "FATAL: Security restrictions prevent extracting or executing " + TOOL_NAME + ".exe.", e);
             throw new IllegalStateException("Could not initialize WindowsVolumeControl due to security restrictions", e);
         }
     }
@@ -76,335 +107,383 @@ public class WindowsVolumeControl {
     }
 
     /**
-     * Extracts nircmd.exe from the classpath resources to a temporary file.
+     * Sets the target audio device for subsequent volume control actions.
+     *
+     * @param device The audio device to target.
+     * @throws NullPointerException if device is null.
+     */
+    public void setTargetDevice(AudioDevice device) {
+        if (device == null) {
+            throw new NullPointerException("Target AudioDevice cannot be null.");
+        }
+        this.currentTargetDevice = device;
+        if (isLoggingEnabled) {
+            LOGGER.log(Level.INFO, "Target audio device set to: {0}", device.getDeviceString());
+        }
+    }
+
+    /**
+     * Gets the currently set target audio device.
+     *
+     * @return The current target AudioDevice.
+     */
+    public AudioDevice getTargetDevice() {
+        return this.currentTargetDevice;
+    }
+
+    /**
+     * Extracts the command-line tool (svcl.exe) from the classpath resources to a temporary file.
      *
      * @return The absolute path to the extracted executable file.
      * @throws IOException If the resource cannot be found or copied.
      * @throws SecurityException If file operations are restricted.
      */
-    private static String extractNirCmd() throws IOException, SecurityException {
-        InputStream nirCmdStream = WindowsVolumeControl.class.getResourceAsStream(NIRCMD_RESOURCE_NAME);
-        if (nirCmdStream == null) {
-            throw new IOException("Cannot find '" + NIRCMD_RESOURCE_NAME + "' in classpath resources.");
+    private static String extractTool() throws IOException, SecurityException {
+        InputStream toolStream = WindowsVolumeControl.class.getResourceAsStream(TOOL_RESOURCE_NAME);
+        if (toolStream == null) {
+            throw new IOException("Cannot find '" + TOOL_RESOURCE_NAME + "' in classpath resources.");
         }
 
-        Path tempFile = Files.createTempFile("nircmd-", ".exe");
+        Path tempFile = Files.createTempFile(TOOL_NAME + "-", ".exe");
 
         if (isLoggingEnabled) {
-            LOGGER.log(Level.FINE, "Extracting NirCmd resource to temporary file: {0}", tempFile.toAbsolutePath());
+            LOGGER.log(Level.FINE, "Extracting {0} resource to temporary file: {1}", new Object[]{TOOL_NAME.toUpperCase(), tempFile.toAbsolutePath()});
         }
 
-        try (OutputStream out = Files.newOutputStream(tempFile)) {
+        try (OutputStream out = Files.newOutputStream(tempFile);
+             InputStream in = toolStream) {
             byte[] buffer = new byte[8192];
             int bytesRead;
-            while ((bytesRead = nirCmdStream.read(buffer)) != -1) {
+            while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
             }
-        } finally {
-            try {
-                nirCmdStream.close();
-            } catch (IOException e) {
-                LOGGER.log(Level.WARNING, "Error closing NirCmd resource stream", e);
-            }
+        } catch (IOException e) {
+            try { Files.deleteIfExists(tempFile); } catch (IOException ignore) {}
+            throw e;
         }
 
         return tempFile.toAbsolutePath().toString();
     }
 
     /**
-     * Sets the system volume to a specific percentage (0-100).
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Sets the volume to a specific percentage (0-100) for the current target device.
+     * Uses the command: svcl.exe /SetVolume "[DeviceName]" [percentage]
+     * If an error occurs during execution, it is logged as SEVERE.
      *
      * @param percentage The desired volume level (0 to 100).
      * @throws IllegalArgumentException If percentage is outside the 0-100 range.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void setVolume(int percentage) {
         if (percentage < 0 || percentage > 100) {
             throw new IllegalArgumentException("Percentage must be between 0 and 100.");
         }
         try {
-            checkNirCmdReady();
-            int nircmdVolume = (int) Math.round((percentage / 100.0) * NIRCMD_MAX_VOLUME);
-            executeNirCmd("setsysvolume", String.valueOf(nircmdVolume));
+            executeTool(false, "/SetVolume", currentTargetDevice.getDeviceString(), String.valueOf(percentage));
             if (isLoggingEnabled) {
-                LOGGER.log(Level.INFO, "System volume set to {0}% (NirCmd value: {1})", new Object[]{percentage, nircmdVolume});
+                LOGGER.log(Level.INFO, "Volume set to {0}% for {1}", new Object[]{percentage, currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to set volume to " + percentage + "%", e);
+            LOGGER.log(Level.SEVERE, "Failed to set volume to " + percentage + "% for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Increases the system volume by a specific percentage step.
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Sets the volume to the maximum level (100%) for the current target device.
+     * Uses the command: svcl.exe /SetVolume "[DeviceName]" 100
+     * If an error occurs during execution, it is logged as SEVERE.
      *
-     * @param percentageStep The percentage points to increase the volume by. Must be non-negative.
+     * @throws IllegalStateException if the command-line tool could not be initialized.
+     */
+    public void volumeMax() {
+        try {
+            executeTool(false, "/SetVolume", currentTargetDevice.getDeviceString(), "100");
+            if (isLoggingEnabled) {
+                LOGGER.log(Level.INFO, "Volume set to {0}% for {1}", new Object[]{100, currentTargetDevice.getDeviceString()});
+            }
+        } catch (IOException | InterruptedException | IllegalStateException e) {
+            LOGGER.log(Level.SEVERE, "Failed to set volume to " + 100 + "% for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
+        }
+    }
+
+    /**
+     * Sets the volume to the minimum level (0%) for the current target device.
+     * Uses the command: svcl.exe /SetVolume "[DeviceName]" 0
+     * If an error occurs during execution, it is logged as SEVERE.
+     *
+     * @throws IllegalStateException if the command-line tool could not be initialized.
+     */
+    public void volumeMin() {
+        try {
+            executeTool(false, "/SetVolume", currentTargetDevice.getDeviceString(), "0");
+            if (isLoggingEnabled) {
+                LOGGER.log(Level.INFO, "Volume set to {0}% for {1}", new Object[]{0, currentTargetDevice.getDeviceString()});
+            }
+        } catch (IOException | InterruptedException | IllegalStateException e) {
+            LOGGER.log(Level.SEVERE, "Failed to set volume to " + 0 + "% for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
+        }
+    }
+
+    /**
+     * Increases the volume by a specific percentage step for the current target device.
+     * Uses the command: svcl.exe /ChangeVolume "[DeviceName]" +[percentageStep]
+     * If an error occurs during execution, it is logged as SEVERE.
+     *
+     * @param percentageStep The percentage points (positive) to increase the volume by.
      * @throws IllegalArgumentException If percentageStep is negative.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void increaseVolume(int percentageStep) {
         if (percentageStep < 0) {
             throw new IllegalArgumentException("Percentage step must be non-negative for increase.");
         }
         try {
-            checkNirCmdReady();
-            int nircmdChange = (int) Math.round((percentageStep / 100.0) * NIRCMD_MAX_VOLUME);
-            executeNirCmd("changesysvolume", String.valueOf(nircmdChange));
+            executeTool(false, "/ChangeVolume", currentTargetDevice.getDeviceString(), "+" + percentageStep);
             if (isLoggingEnabled) {
-                LOGGER.log(Level.INFO, "System volume increased by {0}% (NirCmd change: {1})", new Object[]{percentageStep, nircmdChange});
+                LOGGER.log(Level.INFO, "Volume increased by {0}% for {1}", new Object[]{percentageStep, currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to increase volume by " + percentageStep + "%", e);
+            LOGGER.log(Level.SEVERE, "Failed to increase volume by " + percentageStep + "% for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Decreases the system volume by a specific percentage step.
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Decreases the volume by a specific percentage step for the current target device.
+     * Uses the command: svcl.exe /ChangeVolume "[DeviceName]" -[percentageStep]
+     * If an error occurs during execution, it is logged as SEVERE.
      *
-     * @param percentageStep The percentage points to decrease the volume by. Must be non-negative.
+     * @param percentageStep The percentage points (positive) to decrease the volume by.
      * @throws IllegalArgumentException If percentageStep is negative.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void decreaseVolume(int percentageStep) {
         if (percentageStep < 0) {
             throw new IllegalArgumentException("Percentage step must be non-negative for decrease.");
         }
         try {
-            checkNirCmdReady();
-            int nircmdChange = (int) Math.round((percentageStep / 100.0) * NIRCMD_MAX_VOLUME);
-            executeNirCmd("changesysvolume", String.valueOf(-nircmdChange));
+            executeTool(false, "/ChangeVolume", currentTargetDevice.getDeviceString(), "-" + percentageStep);
             if (isLoggingEnabled) {
-                LOGGER.log(Level.INFO, "System volume decreased by {0}% (NirCmd change: {1})", new Object[]{percentageStep, -nircmdChange});
+                LOGGER.log(Level.INFO, "Volume decreased by {0}% for {1}", new Object[]{percentageStep, currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to decrease volume by " + percentageStep + "%", e);
+            LOGGER.log(Level.SEVERE, "Failed to decrease volume by " + percentageStep + "% for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Mutes the system volume.
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Mutes the volume for the current target device.
+     * Uses the command: svcl.exe /Mute "[DeviceName]"
+     * If an error occurs during execution, it is logged as SEVERE.
      *
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void mute() {
         try {
-            checkNirCmdReady();
-            executeNirCmd("mutesysvolume", "1");
+            executeTool(false, "/Mute", currentTargetDevice.getDeviceString());
             if (isLoggingEnabled) {
-                LOGGER.info("System volume muted.");
+                LOGGER.log(Level.INFO, "Volume muted for {0}", new Object[]{currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to mute volume", e);
+            LOGGER.log(Level.SEVERE, "Failed to mute volume for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Unmutes the system volume.
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Unmutes the volume for the current target device.
+     * Uses the command: svcl.exe /Unmute "[DeviceName]"
+     * If an error occurs during execution, it is logged as SEVERE.
      *
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void unmute() {
         try {
-            checkNirCmdReady();
-            executeNirCmd("mutesysvolume", "0");
+            executeTool(false, "/Unmute", currentTargetDevice.getDeviceString());
             if (isLoggingEnabled) {
-                LOGGER.info("System volume unmuted.");
+                LOGGER.log(Level.INFO, "Volume unmuted for {0}", new Object[]{currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to unmute volume", e);
+            LOGGER.log(Level.SEVERE, "Failed to unmute volume for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Toggles the system volume mute state.
-     * If an error occurs during execution (e.g., NirCmd fails), it is logged as SEVERE.
+     * Toggles the mute state of the volume for the current target device.
+     * Uses the command: svcl.exe /Switch "[DeviceName]"
+     * If an error occurs during execution, it is logged as SEVERE.
      *
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
     public void toggleMute() {
         try {
-            checkNirCmdReady();
-            executeNirCmd("mutesysvolume", "2");
+            executeTool(false, "/Switch", currentTargetDevice.getDeviceString());
             if (isLoggingEnabled) {
-                LOGGER.info("System volume mute toggled.");
+                LOGGER.log(Level.INFO, "Volume mute toggled for {0}", new Object[]{currentTargetDevice.getDeviceString()});
             }
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to toggle mute state", e);
+            LOGGER.log(Level.SEVERE, "Failed to toggle mute state for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
         }
     }
 
     /**
-     * Gets the current system volume percentage (0-100).
-     * Uses the `getsysvolume` NirCmd command. Parses the first number returned if multiple are present (e.g., L/R channels).
-     * If an error occurs during execution or parsing, it is logged as SEVERE and -1 is returned.
+     * Gets the current volume percentage (0-100) for the current target device.
+     * Uses the command: svcl.exe /Stdout /GetPercent "[DeviceName]"
+     * If an error occurs during execution or parsing, it is logged as SEVERE and -1.0 is returned.
      *
-     * @return The current volume percentage (0-100), or -1 if the volume could not be retrieved or parsed.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading).
+     * @return The current volume percentage (0.0-100.0), or -1.0 if the volume could not be retrieved or parsed.
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
-    public int getVolume() {
+    public double getVolume() {
         try {
-            checkNirCmdReady();
-            String rawOutput = executeNirCmdAndCaptureOutput("getsysvolume");
+            String rawOutput = executeTool(true, "/Stdout", "/GetPercent", currentTargetDevice.getDeviceString());
 
             if (rawOutput == null || rawOutput.trim().isEmpty()) {
-                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned empty or null output.");
-                return -1;
+                LOGGER.log(Level.WARNING, "{0} /Stdout /GetPercent returned empty or null output for {1}.", new Object[]{TOOL_NAME.toUpperCase(), currentTargetDevice.getDeviceString()});
+                return -1.0;
             }
 
-            String[] parts = rawOutput.trim().split("\\s+");
-            if (parts.length == 0) {
-                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned unexpected format (no numbers): {0}", rawOutput);
-                return -1;
-            }
+            double percentage = Double.parseDouble(rawOutput.trim());
 
-            int nircmdVolume = Integer.parseInt(parts[0]);
-            if (nircmdVolume < 0 || nircmdVolume > NIRCMD_MAX_VOLUME) {
-                LOGGER.log(Level.WARNING, "NirCmd getsysvolume returned value outside expected range [0, {0}]: {1}", new Object[]{NIRCMD_MAX_VOLUME, nircmdVolume});
-                nircmdVolume = Math.max(0, Math.min(NIRCMD_MAX_VOLUME, nircmdVolume));
+            if (percentage < 0 || percentage > 100) {
+                LOGGER.log(Level.WARNING, "{0} /GetPercent returned value outside expected range [0, 100] for {1}: {2}", new Object[]{TOOL_NAME.toUpperCase(), currentTargetDevice.getDeviceString(), percentage});
+                percentage = Math.max(0.0, Math.min(100.0, percentage));
             }
-
-            int percentage = (int) Math.round((nircmdVolume / (double) NIRCMD_MAX_VOLUME) * 100.0);
 
             if (isLoggingEnabled) {
-                LOGGER.log(Level.INFO, "Current system volume retrieved: {0}% (NirCmd value: {1})", new Object[]{percentage, nircmdVolume});
+                LOGGER.log(Level.INFO, "Current volume retrieved via {0} for {1}: {2}%", new Object[]{TOOL_NAME.toUpperCase(), currentTargetDevice.getDeviceString(), percentage});
             }
             return percentage;
 
         } catch (IOException | InterruptedException | IllegalStateException e) {
-            LOGGER.log(Level.SEVERE, "Failed to get current volume", e);
-            return -1;
+            LOGGER.log(Level.SEVERE, "Failed to get current volume for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
+            return -1.0;
         } catch (NumberFormatException e) {
-            LOGGER.log(Level.SEVERE, "Failed to parse volume output from NirCmd", e);
-            return -1;
+            LOGGER.log(Level.SEVERE, "Failed to parse volume percentage output from " + TOOL_NAME + " for " + currentTargetDevice.getDeviceString() + ". Output: " + e.getMessage(), e);
+            return -1.0;
         }
     }
 
     /**
-     * Checks if the NirCmd executable path was successfully determined during initialization.
-     * @throws IllegalStateException if NirCmd path is null (initialization failed).
+     * Checks if the current target device is muted.
+     * Uses the command: svcl.exe /Stdout /GetMute "[DeviceName]"
+     * If an error occurs during execution or parsing, it is logged as SEVERE and false is returned.
+     *
+     * @return true if the device is muted, false otherwise or on error.
+     * @throws IllegalStateException if the command-line tool could not be initialized.
      */
-    private void checkNirCmdReady() throws IllegalStateException {
-        if (extractedNirCmdPath == null) {
-            throw new IllegalStateException("NirCmd executable path is not available. Initialization likely failed. Check logs.");
+    public boolean isMuted() {
+        try {
+            String rawOutput = executeTool(true, "/Stdout", "/GetMute", currentTargetDevice.getDeviceString());
+
+            if (rawOutput == null || rawOutput.trim().isEmpty()) {
+                LOGGER.log(Level.WARNING, "{0} /Stdout /GetMute returned empty or null output for {1}.", new Object[]{TOOL_NAME.toUpperCase(), currentTargetDevice.getDeviceString()});
+                return false;
+            }
+
+            boolean muted = "1".equals(rawOutput.trim());
+
+            if (isLoggingEnabled) {
+                LOGGER.log(Level.INFO, "Mute status retrieved via {0} for {1}: {2}", new Object[]{TOOL_NAME.toUpperCase(), currentTargetDevice.getDeviceString(), muted});
+            }
+            return muted;
+
+        } catch (IOException | InterruptedException | IllegalStateException e) {
+            LOGGER.log(Level.SEVERE, "Failed to get mute status for " + currentTargetDevice.getDeviceString() + " using " + TOOL_NAME, e);
+            return false;
         }
     }
 
     /**
-     * Executes a NirCmd command without capturing its standard output (primarily for actions).
+     * Checks if the command-line tool executable path was successfully determined during initialization.
+     * @throws IllegalStateException if path is null (initialization failed).
+     */
+    private void checkToolReady() throws IllegalStateException {
+        if (extractedToolPath == null) {
+            throw new IllegalStateException(TOOL_NAME.toUpperCase() + " executable path is not available. Initialization likely failed. Check logs.");
+        }
+    }
+
+    /**
+     * Executes the command-line tool, optionally capturing the first line of its standard output.
      * Standard error is consumed and logged.
      *
-     * @param command The NirCmd command (e.g., "setsysvolume").
-     * @param args    Variable arguments for the NirCmd command.
-     * @throws IOException If an I/O error occurs during process execution or if NirCmd path isn't initialized.
+     * @param captureOutput If true, captures and returns the first line of stdout. If false, consumes stdout via StreamGobbler and returns null.
+     * @param args Command and arguments for the tool (e.g., "/SetVolume", "DefaultRenderDevice", "50").
+     * @return The first line of standard output if captureOutput is true, otherwise null.
+     * @throws IOException If an I/O error occurs during process execution or the tool returns non-zero exit code.
      * @throws InterruptedException If the current thread is interrupted while waiting.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading or check).
+     * @throws IllegalStateException if the tool path is null.
      */
-    private void executeNirCmd(String command, String... args) throws IOException, InterruptedException, IllegalStateException {
-        checkNirCmdReady();
+    private String executeTool(boolean captureOutput, String... args) throws IOException, InterruptedException, IllegalStateException {
+        checkToolReady();
 
         List<String> commandList = new ArrayList<>();
-        commandList.add(extractedNirCmdPath);
-        commandList.add(command);
+        commandList.add(extractedToolPath);
         commandList.addAll(Arrays.asList(args));
 
         ProcessBuilder processBuilder = new ProcessBuilder(commandList);
+        String commandString = String.join(" ", commandList);
 
         if (isLoggingEnabled) {
-            LOGGER.log(Level.FINE, "Executing: {0}", String.join(" ", commandList));
+            LOGGER.log(Level.FINE, "Executing {0}{1}: {2}", new Object[]{
+                    TOOL_NAME.toUpperCase(),
+                    (captureOutput ? " (Capture)" : ""),
+                    commandString
+            });
         }
 
         Process process = null;
+        String outputLine = null;
+
         try {
             process = processBuilder.start();
 
-            StreamGobbler outputGobbler = new StreamGobbler(process.getInputStream(), "OUTPUT", isLoggingEnabled);
             StreamGobbler errorGobbler = new StreamGobbler(process.getErrorStream(), "ERROR", isLoggingEnabled);
-            new Thread(outputGobbler).start();
             new Thread(errorGobbler).start();
 
-            int exitCode = process.waitFor();
+            if (captureOutput) {
+                try (InputStream stdout = process.getInputStream();
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(stdout))) {
 
-            if (exitCode != 0) {
-                LOGGER.log(Level.WARNING, "NirCmd command finished with non-zero exit code: {0}. Command: {1}",
-                        new Object[]{exitCode, String.join(" ", commandList)});
-            } else {
-                if (isLoggingEnabled) {
-                    LOGGER.log(Level.FINE, "NirCmd command finished successfully (exit code 0).");
+                    int exitCode = process.waitFor();
+
+                    if (exitCode != 0) {
+                        LOGGER.log(Level.WARNING, "{0} command finished with non-zero exit code: {1}. Command: {2}",
+                                new Object[]{TOOL_NAME.toUpperCase(), exitCode, commandString});
+                        throw new IOException(TOOL_NAME.toUpperCase() + " command failed with exit code " + exitCode + " for command: " + commandString);
+                    } else {
+                        if (isLoggingEnabled) {
+                            LOGGER.log(Level.FINE, "{0} command finished successfully (exit code 0).", TOOL_NAME.toUpperCase());
+                        }
+                        outputLine = reader.readLine();
+                        if (isLoggingEnabled) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                LOGGER.log(Level.FINEST, "{0}_OUTPUT> (extra) {1}", new Object[]{TOOL_NAME.toUpperCase(), line});
+                            }
+                        }
+                    }
                 }
-            }
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Error executing NirCmd command: " + String.join(" ", commandList), e);
-            throw e;
-        } catch (InterruptedException e) {
-            LOGGER.log(Level.WARNING, "NirCmd execution interrupted: " + String.join(" ", commandList), e);
-            Thread.currentThread().interrupt();
-            throw e;
-        } finally {
-            if (process != null) {
-                process.destroy();
-            }
-        }
-    }
-
-    /**
-     * Executes a NirCmd command and captures the first line of its standard output.
-     * Standard error is consumed and logged.
-     *
-     * @param command The NirCmd command (e.g., "getsysvolume").
-     * @param args    Variable arguments for the NirCmd command.
-     * @return The first line of the standard output from the command, or null if no output was produced.
-     * @throws IOException If an I/O error occurs, the command returns a non-zero exit code, or if NirCmd path isn't initialized.
-     * @throws InterruptedException If the current thread is interrupted while waiting.
-     * @throws IllegalStateException if NirCmd could not be initialized (during class loading or check).
-     */
-    private String executeNirCmdAndCaptureOutput(String command, String... args) throws IOException, InterruptedException, IllegalStateException {
-        checkNirCmdReady();
-
-        List<String> commandList = new ArrayList<>();
-        commandList.add(extractedNirCmdPath);
-        commandList.add(command);
-        commandList.addAll(Arrays.asList(args));
-
-        ProcessBuilder processBuilder = new ProcessBuilder(commandList);
-
-        if (isLoggingEnabled) {
-            LOGGER.log(Level.FINE, "Executing for output capture: {0}", String.join(" ", commandList));
-        }
-
-        Process process = null;
-        String outputLine;
-
-        try {
-            process = processBuilder.start();
-
-            StreamGobbler errorGobbler = new StreamGobbler(process.getErrorStream(), "ERROR", isLoggingEnabled);
-            new Thread(errorGobbler).start();
-
-            try (InputStream stdout = process.getInputStream();
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(stdout))) {
+            } else {
+                StreamGobbler outputGobbler = new StreamGobbler(process.getInputStream(), "OUTPUT", isLoggingEnabled);
+                new Thread(outputGobbler).start();
 
                 int exitCode = process.waitFor();
 
                 if (exitCode != 0) {
-                    LOGGER.log(Level.WARNING, "NirCmd command finished with non-zero exit code: {0}. Command: {1}",
-                            new Object[]{exitCode, String.join(" ", commandList)});
-                    throw new IOException("NirCmd command failed with exit code " + exitCode + " for command: " + String.join(" ", commandList));
+                    LOGGER.log(Level.WARNING, "{0} command finished with non-zero exit code: {1}. Command: {2}",
+                            new Object[]{TOOL_NAME.toUpperCase(), exitCode, commandString});
+                    throw new IOException(TOOL_NAME.toUpperCase() + " command failed with exit code " + exitCode);
                 } else {
                     if (isLoggingEnabled) {
-                        LOGGER.log(Level.FINE, "NirCmd command finished successfully (exit code 0).");
+                        LOGGER.log(Level.FINE, "{0} command finished successfully (exit code 0).", TOOL_NAME.toUpperCase());
                     }
-                    outputLine = reader.readLine();
                 }
             }
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Error executing or reading output from NirCmd command: " + String.join(" ", commandList), e);
+            LOGGER.log(Level.SEVERE, "Error executing " + TOOL_NAME.toUpperCase() + " command: " + commandString, e);
             throw e;
         } catch (InterruptedException e) {
-            LOGGER.log(Level.WARNING, "NirCmd execution interrupted: " + String.join(" ", commandList), e);
+            LOGGER.log(Level.WARNING, TOOL_NAME.toUpperCase() + " execution interrupted: " + commandString, e);
             Thread.currentThread().interrupt();
             throw e;
         } finally {
@@ -412,9 +491,12 @@ public class WindowsVolumeControl {
                 process.destroy();
             }
         }
+
+        if (captureOutput && isLoggingEnabled) {
+            LOGGER.log(Level.FINEST, "{0} raw output captured: {1}", new Object[]{TOOL_NAME.toUpperCase(), outputLine});
+        }
         return outputLine;
     }
-
 
     /**
      * Helper record to consume and optionally log input/error streams from a Process.
@@ -440,5 +522,4 @@ public class WindowsVolumeControl {
             }
         }
     }
-
 }
